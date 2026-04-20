@@ -5,6 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const { fetchMentions, getProjectQueries } = require('./brandwatch');
 const { geocodeMention } = require('./geocoder');
+const { fetchAnsaCrimes } = require('./ansa');
+const { fetchNewsApiCrimes } = require('./newsapi');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,12 +22,8 @@ async function resolveQueryIds() {
     const queries = await getProjectQueries();
     for (const q of queries) {
       const name = (q.name || '').toLowerCase();
-      if (name.includes('crimini') || name.includes('crime')) {
-        QUERY_IDS.crimes = q.id;
-      }
-      if (name.includes('immobiliare') || name.includes('real estate')) {
-        QUERY_IDS.realEstate = q.id;
-      }
+      if (name.includes('crimini') || name.includes('crime')) QUERY_IDS.crimes = q.id;
+      if (name.includes('immobiliare') || name.includes('real estate')) QUERY_IDS.realEstate = q.id;
     }
     console.log('[startup] Resolved query IDs:', QUERY_IDS);
   } catch (err) {
@@ -36,15 +34,16 @@ async function resolveQueryIds() {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function guessCrimeType(text) {
-  if (text.includes('furto') || text.includes('ladro') || text.includes('ladri')) return 'furto';
-  if (text.includes('rapina')) return 'rapina';
-  if (text.includes('spaccio') || text.includes('droga')) return 'spaccio';
-  if (text.includes('truffa') || text.includes('frode') || text.includes('phishing')) return 'truffa';
-  if (text.includes('omicidio') || text.includes('ucciso') || text.includes('assassin')) return 'omicidio';
-  if (text.includes('scippo') || text.includes('borseggio')) return 'borseggio';
-  if (text.includes('ndrangheta') || text.includes('mafia') || text.includes('camorra')) return 'mafia';
-  if (text.includes('vandalismo') || text.includes('incendio')) return 'vandalismo';
-  if (text.includes('violenza sessuale') || text.includes('stupro')) return 'violenza sessuale';
+  const t = (text || '').toLowerCase();
+  if (t.includes('furto') || t.includes('ladro') || t.includes('ladri')) return 'furto';
+  if (t.includes('rapina')) return 'rapina';
+  if (t.includes('spaccio') || t.includes('droga')) return 'spaccio';
+  if (t.includes('truffa') || t.includes('frode') || t.includes('phishing')) return 'truffa';
+  if (t.includes('omicidio') || t.includes('ucciso') || t.includes('assassin')) return 'omicidio';
+  if (t.includes('scippo') || t.includes('borseggio')) return 'borseggio';
+  if (t.includes('ndrangheta') || t.includes('mafia') || t.includes('camorra')) return 'mafia';
+  if (t.includes('vandalismo') || t.includes('incendio')) return 'vandalismo';
+  if (t.includes('violenza sessuale') || t.includes('stupro')) return 'sessuale';
   return 'violenza';
 }
 
@@ -53,65 +52,113 @@ function mentionToHost(url) {
   catch (_) { return 'fonte sconosciuta'; }
 }
 
+// Fetch Brandwatch crimes and normalize to common schema
+async function fetchBrandwatchCrimes() {
+  if (!QUERY_IDS.crimes) return [];
+  const mentions = await fetchMentions(QUERY_IDS.crimes, 7, 100);
+  const severityMap = { negative: 4, neutral: 2, positive: 1 };
+  let idCounter = 9000;
+
+  return mentions
+    .map(mention => {
+      const geo = geocodeMention(mention);
+      if (!geo || !geo.munId) return null;
+      const text = ((mention.title || '') + ' ' + (mention.snippet || '')).toLowerCase();
+      return {
+        id: idCounter++,
+        date: mention.date || new Date().toISOString(),
+        type: guessCrimeType(text),
+        subtype: 'fonte social/news',
+        modus: 'rilevato da Brandwatch',
+        municipio: geo.munId,
+        zona: geo.zoneName || geo.city,
+        lat: null,
+        lng: null,
+        address: geo.zoneName || geo.city,
+        description: (mention.title || mention.snippet || '').slice(0, 200),
+        severity: severityMap[mention.sentiment] || 2,
+        city: geo.city,
+        source: {
+          title: mention.title || 'Brandwatch mention',
+          outlet: mentionToHost(mention.url || ''),
+          date: (mention.date || '').slice(0, 10),
+          url: mention.url || '#',
+          provider: 'Brandwatch',
+        },
+        isLive: true,
+        liveId: 'bw_' + String(mention.id),
+      };
+    })
+    .filter(Boolean);
+}
+
+// Geocode ANSA/NewsAPI crimes using keyword lookup
+function geocodeLiveCrime(crime) {
+  const geo = geocodeMention({
+    title: crime.description,
+    snippet: crime.description,
+    fullText: crime.description,
+    location: null,
+  });
+  if (geo && geo.munId) {
+    crime.municipio = geo.munId;
+    crime.zona = geo.zoneName || 'Milano area';
+  }
+  return crime;
+}
+
 // ── Routes ─────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, queryIds: QUERY_IDS, ts: new Date().toISOString() });
+  res.json({
+    ok: true,
+    queryIds: QUERY_IDS,
+    sources: { brandwatch: !!QUERY_IDS.crimes, ansa: true, newsapi: !!process.env.NEWSAPI_KEY },
+    ts: new Date().toISOString(),
+  });
 });
 
-// Returns crime mentions geocoded to municipality
+// Aggregates crimes from Brandwatch + ANSA + NewsAPI
 app.get('/api/live-crimes', async (_req, res) => {
-  if (!QUERY_IDS.crimes) {
-    return res.json({
-      crimes: [],
-      meta: { source: 'brandwatch', error: 'query_id_not_configured' },
-    });
-  }
-
   try {
-    const mentions = await fetchMentions(QUERY_IDS.crimes, 7, 100);
-    const severityMap = { negative: 4, neutral: 2, positive: 1 };
-    let idCounter = 9000;
+    const [bwResult, ansaResult, napiResult] = await Promise.allSettled([
+      fetchBrandwatchCrimes(),
+      fetchAnsaCrimes(),
+      fetchNewsApiCrimes(),
+    ]);
 
-    const crimes = mentions
-      .map(mention => {
-        const geo = geocodeMention(mention);
-        if (!geo || !geo.munId) return null;
+    const bwCrimes   = bwResult.status   === 'fulfilled' ? bwResult.value   : [];
+    const ansaCrimes = ansaResult.status === 'fulfilled' ? ansaResult.value : [];
+    const napiCrimes = napiResult.status === 'fulfilled' ? napiResult.value : [];
 
-        const text = ((mention.title || '') + ' ' + (mention.snippet || '')).toLowerCase();
-        return {
-          id: idCounter++,
-          date: mention.date || new Date().toISOString(),
-          type: guessCrimeType(text),
-          subtype: 'fonte social/news',
-          modus: 'rilevato da Brandwatch',
-          municipio: geo.munId,
-          zona: geo.zoneName || geo.city,
-          lat: null,   // resolved client-side from ALL_COMUNI
-          lng: null,
-          address: geo.zoneName || geo.city,
-          description: (mention.title || mention.snippet || '').slice(0, 200),
-          severity: severityMap[mention.sentiment] || 2,
-          city: geo.city,
-          source: {
-            title: mention.title || 'Brandwatch mention',
-            outlet: mentionToHost(mention.url || ''),
-            date: (mention.date || '').slice(0, 10),
-            url: mention.url || '#',
-          },
-          isLive: true,
-          bwMentionId: String(mention.id),
-        };
-      })
-      .filter(Boolean);
+    if (ansaResult.status === 'rejected') console.warn('[ANSA]', ansaResult.reason?.message);
+    if (napiResult.status === 'rejected') console.warn('[NewsAPI]', napiResult.reason?.message);
+
+    // Geocode ANSA + NewsAPI crimes
+    const geocodedAnsa = ansaCrimes.map(geocodeLiveCrime);
+    const geocodedNapi = napiCrimes.map(geocodeLiveCrime);
+
+    // Merge all, deduplicate by liveId
+    const seen = new Set();
+    const all = [...bwCrimes, ...geocodedAnsa, ...geocodedNapi].filter(c => {
+      if (seen.has(c.liveId)) return false;
+      seen.add(c.liveId);
+      return true;
+    });
 
     res.json({
-      crimes,
-      meta: { source: 'brandwatch', count: crimes.length, ts: new Date().toISOString() },
+      crimes: all,
+      meta: {
+        total: all.length,
+        brandwatch: bwCrimes.length,
+        ansa: geocodedAnsa.length,
+        newsapi: geocodedNapi.length,
+        ts: new Date().toISOString(),
+      },
     });
   } catch (err) {
     console.error('[/api/live-crimes]', err.message);
-    res.json({ crimes: [], meta: { source: 'brandwatch', error: err.message } });
+    res.json({ crimes: [], meta: { error: err.message } });
   }
 });
 
@@ -120,7 +167,6 @@ app.get('/api/real-estate-news', async (_req, res) => {
   if (!QUERY_IDS.realEstate) {
     return res.json({ mentions: [], meta: { error: 'query_id_not_configured' } });
   }
-
   try {
     const mentions = await fetchMentions(QUERY_IDS.realEstate, 14, 50);
     const results = mentions.map(m => ({
@@ -145,11 +191,8 @@ app.get('/api/sentiment', async (_req, res) => {
   if (!QUERY_IDS.crimes) {
     return res.json({ sentiment: {}, meta: { error: 'query_id_not_configured' } });
   }
-
   try {
     const mentions = await fetchMentions(QUERY_IDS.crimes, 30, 500);
-
-    // Accumulate sentiment counts per munId
     const acc = {};
     for (const mention of mentions) {
       const geo = geocodeMention(mention);
@@ -160,8 +203,6 @@ app.get('/api/sentiment', async (_req, res) => {
       else acc[geo.munId].neu++;
       acc[geo.munId].total++;
     }
-
-    // Normalize to score in range -1..+1
     const sentiment = {};
     for (const [munId, counts] of Object.entries(acc)) {
       if (counts.total === 0) continue;
@@ -173,7 +214,6 @@ app.get('/api/sentiment', async (_req, res) => {
         total: counts.total,
       };
     }
-
     res.json({ sentiment, meta: { ts: new Date().toISOString() } });
   } catch (err) {
     console.error('[/api/sentiment]', err.message);
@@ -186,5 +226,6 @@ resolveQueryIds().then(() => {
   app.listen(PORT, () => {
     console.log(`CrimeMap backend running on http://localhost:${PORT}`);
     console.log('Routes: /api/health  /api/live-crimes  /api/real-estate-news  /api/sentiment');
+    console.log('Sources: Brandwatch', QUERY_IDS.crimes ? '✓' : '✗', '| ANSA ✓ | NewsAPI', process.env.NEWSAPI_KEY ? '✓' : '✗ (set NEWSAPI_KEY)');
   });
 });

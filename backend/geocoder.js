@@ -4,7 +4,7 @@
 // Keywords are lowercase; matching is case-insensitive substring check.
 // More specific keywords listed before generic parents to avoid false positives.
 const MUNICIPALITY_KEYWORDS = [
-  // ── MILAN (munId 1–9) ──────────────────────────────────────────────────
+  // ── MILAN CITY (munId 1–9) ─────────────────────────────────────────────
   {
     munId: 1, city: 'MI', name: 'Centro Storico',
     keywords: [
@@ -70,83 +70,65 @@ const MUNICIPALITY_KEYWORDS = [
     ],
   },
 
-  // ── REGGIO CALABRIA (munId 101–109) ───────────────────────────────────
+  // ── MILAN HINTERLAND (munId 10–16) ────────────────────────────────────
   {
-    munId: 101, city: 'RC', name: 'Centro Storico',
+    munId: 10, city: 'MI', name: 'Sesto S.G. · Cinisello',
     keywords: [
-      'lungomare', 'falcomatà', 'corso garibaldi', 'centro storico reggio',
-      'centro di reggio calabria', 'piazza italia', 'via marina',
-      'museo nazionale', 'piazza duomo reggio',
+      'sesto san giovanni', 'cinisello', 'cinisello balsamo', 'balsamo',
+      'cormano', 'cusano milanino', 'sesto',
     ],
   },
   {
-    munId: 102, city: 'RC', name: 'Sbarre · Modena',
+    munId: 11, city: 'MI', name: 'Monza · Brianza',
     keywords: [
-      'sbarre', 'modena', 'san sperato', 'sbarre centrali', 'via sbarre',
-      'rione sbarre',
+      'monza', 'brianza', 'seregno', 'desio', 'lissone', 'vimercate',
+      'carate brianza', 'giussano', 'meda', 'nova milanese',
     ],
   },
   {
-    munId: 103, city: 'RC', name: 'Archi · Gallico',
+    munId: 12, city: 'MI', name: 'Rho · Pero · Corsico',
     keywords: [
-      'archi', 'gallico', 'gallico marina', 'pentimele', 'zona nord reggio',
-      'via archi', 'rione archi',
+      'rho', 'pero', 'corsico', 'buccinasco', 'assago', 'settimo milanese',
+      'cornaredo', 'pregnana milanese',
     ],
   },
   {
-    munId: 104, city: 'RC', name: 'Pellaro · Bocale',
+    munId: 13, city: 'MI', name: 'Abbiategrasso · Magenta',
     keywords: [
-      'pellaro', 'bocale', 'lume', 'san filippo sud', 'zona sud reggio',
-      'marina di pellaro',
+      'abbiategrasso', 'magenta', 'albairate', 'corbetta', 'cuggiono',
+      'inveruno', 'ossona', 'robecco sul naviglio',
     ],
   },
   {
-    munId: 105, city: 'RC', name: 'Gebbione · Ravagnese',
+    munId: 14, city: 'MI', name: 'Binasco · Pieve Emanuele',
     keywords: [
-      'gebbione', 'ravagnese', 'aeroporto reggio', 'tito minniti',
-      'aeroporto dello stretto',
+      'binasco', 'pieve emanuele', 'locate di triulzi', 'locate triulzi',
+      'lacchiarella', 'vernate', 'zibido san giacomo',
     ],
   },
   {
-    munId: 106, city: 'RC', name: 'Santa Caterina · Gallina',
+    munId: 15, city: 'MI', name: 'Paullo · Melegnano',
     keywords: [
-      'santa caterina', 'gallina', 'cataforio', 'colle degli ulivi',
-      'san giorgio extra',
+      'paullo', 'melegnano', 'mediglia', 'lodi vecchio', 'cerro al lambro',
+      'colturano', 'dresano', 'vizzolo predabissi',
     ],
   },
   {
-    munId: 107, city: 'RC', name: 'Condera · Eremo',
+    munId: 16, city: 'MI', name: 'Cologno · Segrate · Vimodrone',
     keywords: [
-      'condera', 'eremo', 'spirito santo', 'san vito', 'collina reggio',
-      'rione ferrovieri',
-    ],
-  },
-  {
-    munId: 108, city: 'RC', name: 'Tremulini · Trabocchetto',
-    keywords: [
-      'tremulini', 'trabocchetto', 'rione marconi', 'via reggio campi',
-      'modena superiore',
-    ],
-  },
-  {
-    munId: 109, city: 'RC', name: 'Catona · Salice',
-    keywords: [
-      'catona', 'salice', 'villa san giuseppe', 'arghillà', 'zona nord est reggio',
-      'rosalì',
+      'cologno monzese', 'cologno', 'segrate', 'vimodrone', 'pioltello',
+      'rodano', 'peschiera borromeo', 'opera',
     ],
   },
 ];
 
-// City-level fallbacks — used when no specific zone matches
+// City-level fallback
 const CITY_FALLBACKS = [
-  { city: 'MI', keywords: ['milano', 'milan', 'milanese'] },
-  { city: 'RC', keywords: ['reggio calabria', 'reggio cal', ' rc '] },
+  { city: 'MI', keywords: ['milano', 'milan', 'milanese', 'lombardia', 'lombard'] },
 ];
 
 /**
- * Given a Brandwatch mention object, return { munId, city, zoneName } or null.
- * Searches title + snippet + fullText + location.name (all lowercased).
- * Returns { munId: null, city, zoneName: null } for city-level fallback.
+ * Given a Brandwatch/ANSA/NewsAPI mention, return { munId, city, zoneName } or null.
  */
 function geocodeMention(mention) {
   const haystack = [
