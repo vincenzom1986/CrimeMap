@@ -36,7 +36,7 @@ async function fetchNewsApiCrimes() {
       q: QUERY,
       language: 'it',
       sortBy: 'publishedAt',
-      pageSize: 50,
+      pageSize: 100,
       from,
       apiKey: process.env.NEWSAPI_KEY,
     },

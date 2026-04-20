@@ -7,6 +7,7 @@ const { fetchMentions, getProjectQueries } = require('./brandwatch');
 const { geocodeMention } = require('./geocoder');
 const { fetchAnsaCrimes } = require('./ansa');
 const { fetchNewsApiCrimes } = require('./newsapi');
+const { fetchExtraRss } = require('./rss');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -113,7 +114,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     queryIds: QUERY_IDS,
-    sources: { brandwatch: !!QUERY_IDS.crimes, ansa: true, newsapi: !!process.env.NEWSAPI_KEY },
+    sources: { brandwatch: !!QUERY_IDS.crimes, ansa: true, newsapi: !!process.env.NEWSAPI_KEY, rss: true },
     ts: new Date().toISOString(),
   });
 });
@@ -121,26 +122,30 @@ app.get('/api/health', (_req, res) => {
 // Aggregates crimes from Brandwatch + ANSA + NewsAPI
 app.get('/api/live-crimes', async (_req, res) => {
   try {
-    const [bwResult, ansaResult, napiResult] = await Promise.allSettled([
+    const [bwResult, ansaResult, napiResult, rssResult] = await Promise.allSettled([
       fetchBrandwatchCrimes(),
       fetchAnsaCrimes(),
       fetchNewsApiCrimes(),
+      fetchExtraRss(),
     ]);
 
     const bwCrimes   = bwResult.status   === 'fulfilled' ? bwResult.value   : [];
     const ansaCrimes = ansaResult.status === 'fulfilled' ? ansaResult.value : [];
     const napiCrimes = napiResult.status === 'fulfilled' ? napiResult.value : [];
+    const rssCrimes  = rssResult.status  === 'fulfilled' ? rssResult.value  : [];
 
     if (ansaResult.status === 'rejected') console.warn('[ANSA]', ansaResult.reason?.message);
     if (napiResult.status === 'rejected') console.warn('[NewsAPI]', napiResult.reason?.message);
+    if (rssResult.status  === 'rejected') console.warn('[RSS]', rssResult.reason?.message);
 
-    // Geocode ANSA + NewsAPI crimes
+    // Geocode ANSA + NewsAPI + extra RSS crimes
     const geocodedAnsa = ansaCrimes.map(geocodeLiveCrime);
     const geocodedNapi = napiCrimes.map(geocodeLiveCrime);
+    const geocodedRss  = rssCrimes.map(geocodeLiveCrime);
 
     // Merge all, deduplicate by liveId
     const seen = new Set();
-    const all = [...bwCrimes, ...geocodedAnsa, ...geocodedNapi].filter(c => {
+    const all = [...bwCrimes, ...geocodedAnsa, ...geocodedNapi, ...geocodedRss].filter(c => {
       if (seen.has(c.liveId)) return false;
       seen.add(c.liveId);
       return true;
@@ -153,6 +158,7 @@ app.get('/api/live-crimes', async (_req, res) => {
         brandwatch: bwCrimes.length,
         ansa: geocodedAnsa.length,
         newsapi: geocodedNapi.length,
+        rss: geocodedRss.length,
         ts: new Date().toISOString(),
       },
     });
