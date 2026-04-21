@@ -143,9 +143,10 @@ app.get('/api/live-crimes', async (_req, res) => {
     const geocodedNapi = napiCrimes.map(geocodeLiveCrime);
     const geocodedRss  = rssCrimes.map(geocodeLiveCrime);
 
-    // Merge all, deduplicate by liveId
+    // Merge all, deduplicate by liveId, keep only geocoded crimes
     const seen = new Set();
     const all = [...bwCrimes, ...geocodedAnsa, ...geocodedNapi, ...geocodedRss].filter(c => {
+      if (!c.municipio) return false;
       if (seen.has(c.liveId)) return false;
       seen.add(c.liveId);
       return true;
