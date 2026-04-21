@@ -74,7 +74,7 @@ async function fetchAnsaCrimes() {
           provider: 'ANSA',
         },
         isLive: true,
-        liveId: 'ansa_' + Buffer.from(item.link || item.title || String(idCounter)).toString('base64').slice(0, 16),
+        liveId: 'ansa_' + require('crypto').createHash('md5').update(item.link || item.title || String(idCounter)).digest('hex').slice(0, 24),
       };
     });
 

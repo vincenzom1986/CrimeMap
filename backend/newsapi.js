@@ -70,7 +70,7 @@ async function fetchNewsApiCrimes() {
         provider: 'NewsAPI',
       },
       isLive: true,
-      liveId: 'napi_' + Buffer.from(a.url || a.title || String(idCounter)).toString('base64').slice(0, 16),
+      liveId: 'napi_' + require('crypto').createHash('md5').update(a.url || a.title || String(idCounter)).digest('hex').slice(0, 24),
     };
   });
 

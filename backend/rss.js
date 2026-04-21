@@ -93,7 +93,7 @@ async function fetchFeed(feed, parser, idCounter) {
             provider: feed.provider,
           },
           isLive: true,
-          liveId: 'rss_' + Buffer.from((typeof link === 'string' ? link : item.title || String(idCounter))).toString('base64').slice(0, 16),
+          liveId: 'rss_' + require('crypto').createHash('md5').update(typeof link === 'string' ? link : item.title || String(idCounter)).digest('hex').slice(0, 24),
         };
       });
   } catch (err) {
