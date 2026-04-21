@@ -9,10 +9,10 @@ let _cache = null;
 let _cacheExpiry = 0;
 
 const RSS_FEEDS = [
-  { url: 'https://www.corriere.it/rss/cronache.xml',        provider: 'Corriere' },
-  { url: 'https://www.repubblica.it/rss/cronaca/rss2.0.xml', provider: 'Repubblica' },
-  { url: 'https://www.ilgiorno.it/rss/cronaca',              provider: 'Il Giorno' },
-  { url: 'https://milano.corriere.it/rss/',                  provider: 'Corriere Milano' },
+  { url: 'https://www.milanotoday.it/rss/feed.xml',          provider: 'MilanoToday' },
+  { url: 'https://www.tgcom24.mediaset.it/rss/cronaca.xml',  provider: 'TGCom24' },
+  { url: 'https://www.fanpage.it/cronaca/feed/',             provider: 'Fanpage' },
+  { url: 'https://www.monzatoday.it/rss/feed.xml',           provider: 'MonzaToday' },
 ];
 
 const CRIME_KEYWORDS = [

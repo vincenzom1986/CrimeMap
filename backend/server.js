@@ -63,22 +63,21 @@ async function fetchBrandwatchCrimes() {
   return mentions
     .map(mention => {
       const geo = geocodeMention(mention);
-      if (!geo || !geo.munId) return null;
       const text = ((mention.title || '') + ' ' + (mention.snippet || '')).toLowerCase();
-      return {
+      const crime = {
         id: idCounter++,
         date: mention.date || new Date().toISOString(),
         type: guessCrimeType(text),
         subtype: 'fonte social/news',
         modus: 'rilevato da Brandwatch',
-        municipio: geo.munId,
-        zona: geo.zoneName || geo.city,
+        municipio: geo ? geo.munId : null,
+        zona: geo ? (geo.zoneName || 'Milano area') : 'Milano area',
         lat: null,
         lng: null,
-        address: geo.zoneName || geo.city,
+        address: geo ? (geo.zoneName || 'Milano') : 'Milano',
         description: (mention.title || mention.snippet || '').slice(0, 200),
         severity: severityMap[mention.sentiment] || 2,
-        city: geo.city,
+        city: 'MI',
         source: {
           title: mention.title || 'Brandwatch mention',
           outlet: mentionToHost(mention.url || ''),
@@ -89,8 +88,8 @@ async function fetchBrandwatchCrimes() {
         isLive: true,
         liveId: 'bw_' + String(mention.id),
       };
-    })
-    .filter(Boolean);
+      return geocodeLiveCrime(crime);
+    });
 }
 
 // Geocode ANSA/NewsAPI crimes using keyword lookup
