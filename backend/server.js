@@ -89,7 +89,8 @@ async function fetchBrandwatchCrimes() {
         liveId: 'bw_' + String(mention.id),
       };
       return geocodeLiveCrime(crime);
-    });
+    })
+    .filter(c => c.municipio !== null);
 }
 
 // Geocode ANSA/NewsAPI crimes using keyword lookup
